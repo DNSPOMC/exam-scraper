@@ -2380,6 +2380,26 @@
       if (f) loadFile(f);
     });
 
+    const SECRET_PASSPHRASE = 'NaxlexSecretKey2026!#';
+
+    async function decryptAndDecompressArchive(buffer) {
+      const encoder = new TextEncoder();
+      const keyMaterial = await crypto.subtle.digest('SHA-256', encoder.encode(SECRET_PASSPHRASE));
+      const key = await crypto.subtle.importKey('raw', keyMaterial, { name: 'AES-GCM' }, false, ['decrypt']);
+      const iv = buffer.slice(0, 12);
+      const data = buffer.slice(12);
+      
+      // 1. Decrypt
+      const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: new Uint8Array(iv) }, key, data);
+      
+      // 2. Decompress using built-in browser DecompressionStream (Gzip)
+      const ds = new DecompressionStream('gzip');
+      const decompressedStream = new Response(decrypted).body.pipeThrough(ds);
+      const text = await new Response(decompressedStream).text();
+      
+      return JSON.parse(text);
+    }
+
     async function processArchiveBuffer(buffer, fileName) {
       let obj;
       try {
@@ -2387,23 +2407,9 @@
         const text = new TextDecoder().decode(buffer);
         obj = JSON.parse(text);
       } catch (err) {
-        // If it fails, assume it's encrypted and ask the backend to decrypt it
-        const formData = new FormData();
-        const blob = new Blob([buffer]);
-        formData.append('file', blob, fileName || 'archive.naxenc');
-
+        // If it fails, assume it's encrypted and decrypt/decompress it locally
         try {
-          const res = await fetch('/api/decrypt', {
-            method: 'POST',
-            body: formData
-          });
-
-          if (!res.ok) {
-            const errorData = await res.json().catch(() => ({}));
-            throw new Error(errorData.error || `Server responded with ${res.status}`);
-          }
-
-          obj = await res.json();
+          obj = await decryptAndDecompressArchive(buffer);
         } catch (decryptErr) {
            throw new Error('File is neither a valid JSON archive nor could it be decrypted. ' + decryptErr.message);
         }
