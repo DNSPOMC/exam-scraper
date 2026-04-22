@@ -2,9 +2,9 @@ const { writeFile } = require('fs/promises');
 const zlib = require('zlib');
 const crypto = require('crypto');
 
-const SECRET_PASSPHRASE = 'NaxlexSecretKey2026!#';
+const SECRET_PASSPHRASE = 'ArchiveSecretKey2026!#';
 
-const BASE_URL = 'https://nursing.naxlex.com';
+const BASE_URL = 'https://nursing.archive.com';
 
 // 👇 Define BOTH targets + output files
 const SCRAPE_TARGETS = [
@@ -143,7 +143,7 @@ async function scrapeParent(PARENT_SLUG, OUTPUT_FILE) {
       let allSubtopics = firstPageResp.subTopics?.data || [];
       const lastPage = firstPageResp.subTopics?.last_page || 1;
 
-      // باقي الصفحات
+      // Remaining pages
       if (lastPage > 1) {
         const pagePromises = [];
 
