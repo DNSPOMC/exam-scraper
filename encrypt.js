@@ -4,8 +4,16 @@ const path = require('path');
 const zlib = require('zlib');
 
 // Default secret passphrase - this must match the one in index.html!
-const SECRET_PASSPHRASE = 'NaxlexSecretKey2026!#';
+const SECRET_PASSPHRASE = 'ArchiveSecretKey2026!#';
 
+/**
+ * Compresses a JSON file using Gzip and encrypts it using AES-256-GCM.
+ * The output structure [12-byte IV] + [Ciphertext] + [16-byte Auth Tag] 
+ * is specifically formatted to be natively decryptable by the browser's Web Crypto API.
+ *
+ * @param {string} inputFile - Path to the input JSON file.
+ * @param {string} outputFile - Path for the generated .naxenc file.
+ */
 function encryptFile(inputFile, outputFile) {
     if (!fs.existsSync(inputFile)) {
         console.error(`Error: File not found - ${inputFile}`);
