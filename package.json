@@ -1,15 +1,15 @@
 {
-  "name": "naxlex-scraper",
+  "name": "archive-scraper",
   "version": "1.0.0",
   "description": "",
   "keywords": [],
-  "homepage": "https://github.com/Chainreactionist/naxlex-scraper#readme",
+  "homepage": "https://github.com/Chainreactionist/archive-scraper#readme",
   "bugs": {
-    "url": "https://github.com/Chainreactionist/naxlex-scraper/issues"
+    "url": "https://github.com/Chainreactionist/archive-scraper/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Chainreactionist/naxlex-scraper.git"
+    "url": "git+https://github.com/Chainreactionist/archive-scraper.git"
   },
   "license": "ISC",
   "author": "",
