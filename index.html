@@ -86,8 +86,9 @@
       <div id="gsearch-panel">
         <div id="gsearch-panel-top">
           <span id="gsearch-panel-icon">&#9906;</span>
-          <input type="text" id="gsearch-panel-input" placeholder="Search questions, answers, explanations…"
+          <input type="text" id="gsearch-panel-input" placeholder="Search questions, answers, explanations, or comma-separated IDs…"
             autocomplete="off" spellcheck="false">
+          <button id="btn-gsearch-create-exam" class="btn" style="display:none; margin-right:8px; padding: 6px 12px; font-size: 13px; background: var(--green); color: var(--bg); border: none; border-radius: 4px; font-weight: 600; cursor: pointer;">✙ Create Exam</button>
           <span id="gsearch-count"></span>
         </div>
         <div id="gsearch-filters">
@@ -118,6 +119,10 @@
           style="padding: 12px 14px; border-bottom: 1px solid var(--border); color: var(--text); font-size: 13px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background .15s;">
           <span style="color: var(--accent); font-size: 16px;">⎘</span> Export to Anki
         </div>
+        <div id="btn-sidebar-custom-exams"
+          style="padding: 12px 14px; border-bottom: 1px solid var(--border); color: var(--text); font-size: 13px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background .15s;">
+          <span style="color: var(--green); font-size: 16px;">⭐</span> Custom Exams
+        </div>
         <div class="sidebar-search"><input type="text" id="sidebar-search" placeholder="Search categories & exams…">
         </div>
         <div id="cat-list"></div>
@@ -139,7 +144,8 @@
           </div>
           <div class="q-controls q-filter-row">
           <div style="display:flex; gap:8px;">
-            <input type="text" id="q-search" placeholder="Filter questions (Study & View)…" style="flex:1;">
+            <input type="text" id="q-search" placeholder="Filter by keyword or comma-separated IDs…" style="flex:1;">
+            <button id="btn-create-exam" class="btn" title="Create Custom Exam from Filtered" style="display:none; padding: 0 12px; font-size: 13px; background: var(--green); color: var(--bg); border: none; border-radius: 4px; font-weight: 600; cursor: pointer;">✙ Create Exam</button>
             <button id="btn-filter-bookmarks" class="btn" title="Toggle Bookmarked Questions Only" style="padding: 0 12px; font-size: 16px;">☆</button>
           </div>
           </div>
@@ -208,6 +214,37 @@
           
           <div id="anki-tree-container" style="overflow-y:auto; flex:1; font-size:13px; padding-bottom:40px;">
             <!-- Tree renders here -->
+          </div>
+        </div>
+
+        <div id="custom-exams-view"
+          style="display:none; flex-direction:column; gap:20px; max-width:900px; margin:0 auto; width:100%; padding: 0 16px 40px 16px;">
+          <div class="exam-header">
+            <div class="exam-title">Custom Exam Creator</div>
+            <div class="exam-meta">Compile your own custom practice tests using specific question IDs.</div>
+          </div>
+          
+          <div style="background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <label for="custom-exam-name" style="font-weight: 600; font-size: 13px; color: var(--text2);">Exam Name</label>
+              <input type="text" id="custom-exam-name" placeholder="e.g. My Custom Practice Test" style="width: 100%; padding: 10px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 14px; outline: none;">
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <label for="custom-exam-ids" style="font-weight: 600; font-size: 13px; color: var(--text2);">Question IDs (Comma or space separated)</label>
+              <textarea id="custom-exam-ids" placeholder="e.g. 59295036, 59295038, 59295040" rows="5" style="width: 100%; padding: 10px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 14px; font-family: var(--mono); resize: vertical; outline: none;"></textarea>
+            </div>
+            
+            <div style="display: flex; justify-content: flex-end;">
+              <button class="btn primary" id="btn-custom-create-submit" style="padding: 10px 20px; font-size: 14px; background: var(--green); color: var(--bg); border: none; border-radius: 4px; font-weight: 600; cursor: pointer;">✙ Create Custom Exam</button>
+            </div>
+          </div>
+
+          <div style="margin-top: 10px;">
+            <div class="section-title" style="margin-bottom: 12px; font-size: 16px; font-weight: 600; color: var(--text);">Your Created Custom Exams</div>
+            <div id="custom-exams-list-container" style="display: flex; flex-direction: column; gap: 12px;">
+              <!-- Custom exams list will render here -->
+            </div>
           </div>
         </div>
       </div>
