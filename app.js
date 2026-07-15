@@ -1,9 +1,37 @@
-let localProgress = JSON.parse(localStorage.getItem('archive_progress') || '{"exams":{},"bookmarks":{}}');
+let localProgress = JSON.parse(localStorage.getItem('archive_progress') || '{"exams":{},"bookmarks":{},"customExams":[]}');
     if (!localProgress.bookmarks) localProgress.bookmarks = {};
+    if (!localProgress.customExams) localProgress.customExams = [];
+
+    // Migrate old custom exams that stored full question objects to just IDs
+    let _needsMigrationSave = false;
+    localProgress.customExams.forEach(exam => {
+      if (exam.questions && !exam.questionIds) {
+        exam.questionIds = exam.questions.map(q => q.id);
+        delete exam.questions;
+        _needsMigrationSave = true;
+      }
+    });
 
     function saveProgress() {
-      localStorage.setItem('archive_progress', JSON.stringify(localProgress));
+      try {
+        localStorage.setItem('archive_progress', JSON.stringify(localProgress));
+      } catch (e) {
+        console.error('Failed to save progress to localStorage:', e);
+        if (e.name === 'QuotaExceededError') {
+          alert('Storage is full. Some progress may not be saved. Try deleting old custom exams.');
+        }
+      }
     }
+
+    // Resolve a custom exam's questionIds to full question objects from allQuestions
+    function resolveCustomExam(exam) {
+      if (!exam.questionIds || !allQuestions.length) return [];
+      const idSet = new Set(exam.questionIds.map(String));
+      return allQuestions.filter(q => idSet.has(String(q.id)));
+    }
+
+    // Persist migration if old format was detected
+    if (_needsMigrationSave) saveProgress();
 
     function recordSeen(q) {
       if (!currentSubtopic) return;
@@ -442,6 +470,7 @@ let localProgress = JSON.parse(localStorage.getItem('archive_progress') || '{"ex
         alert('Could not load from DB: ' + e.message);
       }
     }
+    window.loadFromRecent = loadFromRecent;
 
     async function initDropZone() {
       const recents = await loadRecentArchives();
@@ -457,7 +486,7 @@ let localProgress = JSON.parse(localStorage.getItem('archive_progress') || '{"ex
       }
     }
 
-    const SECRET_PASSPHRASE = 'ArchiveSecretKey2026!#';
+    const SECRET_PASSPHRASE = 'NaxlexSecretKey2026!#';
 
     async function decryptAndDecompressArchive(buffer) {
       const encoder = new TextEncoder();
@@ -572,9 +601,119 @@ let localProgress = JSON.parse(localStorage.getItem('archive_progress') || '{"ex
       $('sidebar-search').addEventListener('input', e => renderCatList(e.target.value.toLowerCase()));
     }
 
+    function createCustomExam(name, questions) {
+      if (!localProgress.customExams) localProgress.customExams = [];
+      const newExam = {
+        id: 'custom-' + Date.now(),
+        name: name,
+        questionIds: questions.map(q => q.id)
+      };
+      localProgress.customExams.push(newExam);
+      saveProgress();
+      renderCatList('');
+
+      setTimeout(() => {
+        const itemEl = document.querySelector(`.subtopic-item[data-st-id="${newExam.id}"]`);
+        if (itemEl) {
+          // Build a runtime object with resolved questions for openSubtopic
+          const resolved = { ...newExam, questions: resolveCustomExam(newExam) };
+          openSubtopic({ name: "Custom Exams" }, resolved, itemEl);
+        }
+      }, 50);
+    }
+
     function renderCatList(filter) {
       const list = $('cat-list');
       list.innerHTML = '';
+
+      // Custom Exams Category
+      const customExams = localProgress.customExams || [];
+      if (customExams.length > 0) {
+        const matchingCustom = customExams.filter(st =>
+          !filter || st.name.toLowerCase().includes(filter)
+        );
+        if (matchingCustom.length > 0) {
+          const hdr = document.createElement('div');
+          hdr.className = 'cat-header';
+          hdr.innerHTML = `<span class="cat-toggle" id="ct-custom">▶</span>
+        <span class="cat-name">⭐ Custom Exams</span>
+        <span class="cat-badge">${matchingCustom.length}</span>`;
+          list.appendChild(hdr);
+
+          const subList = document.createElement('div');
+          subList.className = 'subtopic-list';
+          subList.id = 'sl-custom';
+
+          matchingCustom.forEach(st => {
+            const item = document.createElement('div');
+            item.className = 'subtopic-item';
+            item.dataset.stId = st.id;
+            const p = localProgress.exams[st.id] || { visited: false, seenQs: [], answeredQs: {} };
+            if (p.visited) item.classList.add('visited');
+            const totalQs = (st.questionIds || []).length;
+            const seen = p.seenQs ? p.seenQs.length : 0;
+            const correct = p.answeredQs ? Object.values(p.answeredQs).filter(a => a.correct).length : 0;
+
+            item.innerHTML = `<span class="st-name">${st.name}</span>
+          <div class="st-progress" id="st-prog-${st.id}" data-total="${totalQs}">
+            <span>Seen: ${seen}/${totalQs}</span>
+            <span class="st-prog-correct">Correct: ${correct}</span>
+          </div>
+          <button class="btn btn-delete-custom" data-st-id="${st.id}" title="Delete Custom Exam" style="display: none; padding: 2px 6px; font-size: 11px; background: var(--red); color: white; border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0; margin-left: auto;">✕</button>`;
+
+            const prog = item.querySelector('.st-progress');
+            const delBtn = item.querySelector('.btn-delete-custom');
+            item.addEventListener('mouseenter', () => {
+              prog.style.display = 'none';
+              delBtn.style.display = 'inline-block';
+            });
+            item.addEventListener('mouseleave', () => {
+              prog.style.display = 'flex';
+              delBtn.style.display = 'none';
+            });
+
+            delBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              if (confirm(`Delete custom exam "${st.name}"?`)) {
+                localProgress.customExams = localProgress.customExams.filter(x => x.id !== st.id);
+                delete localProgress.exams[st.id];
+                saveProgress();
+                renderCatList(filter);
+                if (currentSubtopic && currentSubtopic.id === st.id) {
+                  $('exam-view').classList.remove('visible');
+                  $('overview').style.display = 'block';
+                  currentSubtopic = null;
+                }
+              }
+            });
+
+            item.addEventListener('click', () => {
+              const resolved = { ...st, questions: resolveCustomExam(st) };
+              openSubtopic({ name: "Custom Exams" }, resolved, item);
+              if (window.innerWidth <= 900) {
+                $('sidebar').classList.remove('open');
+                $('sidebar-overlay').classList.remove('open');
+              }
+            });
+            subList.appendChild(item);
+          });
+          list.appendChild(subList);
+
+          hdr.addEventListener('click', () => {
+            const tog = $('ct-custom');
+            const sl = $('sl-custom');
+            const isOpen = sl.classList.contains('open');
+            sl.classList.toggle('open', !isOpen);
+            tog.classList.toggle('open', !isOpen);
+          });
+
+          if (filter) {
+            subList.classList.add('open');
+            $(`ct-custom`) && ($(`ct-custom`).classList.add('open'));
+          }
+        }
+      }
+
       DATA.categories.forEach((cat, ci) => {
         const matchingSubtopics = cat.subtopics.filter(st =>
           !filter ||
@@ -651,6 +790,7 @@ let localProgress = JSON.parse(localStorage.getItem('archive_progress') || '{"ex
 
       $('overview').style.display = 'none';
       $('anki-view').style.display = 'none';
+      if ($('custom-exams-view')) $('custom-exams-view').style.display = 'none';
       $('exam-view').classList.add('visible');
 
       $('ev-title').textContent = st.name;
@@ -1527,13 +1667,39 @@ let localProgress = JSON.parse(localStorage.getItem('archive_progress') || '{"ex
     });
 
     function applyQuestionFilters() {
-      const term = ($('q-search').value || '').toLowerCase();
+      const rawTerm = $('q-search').value || '';
+      const term = rawTerm.trim();
+      const cleanTerm = term.replace(/[\s,]+$/, '');
+      const isIdSearch = term && /^\d+([\s,]+\d+)*$/.test(cleanTerm);
+      const searchIds = isIdSearch ? cleanTerm.split(/[\s,]+/) : [];
+      const lowerTerm = term.toLowerCase();
+
       filteredQs = (currentSubtopic.questions || []).filter(q => {
         if (filterBookmarks && (!localProgress.bookmarks || !localProgress.bookmarks[q.id])) return false;
         if (!term) return true;
-        const stripped = (q.question || '').replace(/<[^>]+>/g, '').toLowerCase();
-        return stripped.includes(term);
+        if (isIdSearch) {
+          return searchIds.includes(String(q.id));
+        } else {
+          const stripped = (q.question || '').replace(/<[^>]+>/g, '').toLowerCase();
+          return stripped.includes(lowerTerm);
+        }
       });
+
+      const createBtn = $('btn-create-exam');
+      if (isIdSearch && filteredQs.length > 0) {
+        createBtn.style.display = 'inline-block';
+        createBtn.onclick = () => {
+          const name = prompt("Enter a name for this custom exam:", `Custom Exam (${filteredQs.length} Qs)`);
+          if (name) {
+            createCustomExam(name, filteredQs);
+            $('q-search').value = '';
+            applyQuestionFilters();
+          }
+        };
+      } else {
+        createBtn.style.display = 'none';
+      }
+
       currentQIdx = 0;
       resetAllMaps();
       renderQuestion();
@@ -1605,6 +1771,7 @@ let localProgress = JSON.parse(localStorage.getItem('archive_progress') || '{"ex
       $('quiz-count').max = maxQ;
       $('quiz-count').value = Math.min(10, maxQ);
     }
+    window.setupQuizSetup = setupQuizSetup;
 
     $('btn-start-quiz').addEventListener('click', () => {
       const n = Math.min(parseInt($('quiz-count').value) || 10, (currentSubtopic.questions || []).length);
@@ -2005,21 +2172,49 @@ let localProgress = JSON.parse(localStorage.getItem('archive_progress') || '{"ex
         return;
       }
 
+      const cleanTerm = term.trim().replace(/[\s,]+$/, '');
+      const isIdSearch = cleanTerm && /^\d+([\s,]+\d+)*$/.test(cleanTerm);
+      const searchIds = isIdSearch ? cleanTerm.split(/[\s,]+/) : [];
+
       const pool = getGSearchPool();
       gsearchMatches = [];
       for (let i = 0; i < pool.length; i++) {
         const aq = pool[i];
-        const qText = stripHtml(aq.question);
-        const solText = stripHtml(aq.solution);
-        let optText = '';
-        try { const o = JSON.parse(aq.options || '{}'); optText = Object.values(o).map(v => stripHtml(v.choice)).join(' '); } catch (e) { }
-        const combined = (qText + ' ' + optText + ' ' + solText).toLowerCase();
-        if (combined.includes(q)) {
-          gsearchMatches.push({ q: aq, qText, solText, optText });
+        if (isIdSearch) {
+          if (searchIds.includes(String(aq.id))) {
+            const qText = stripHtml(aq.question);
+            const solText = stripHtml(aq.solution);
+            gsearchMatches.push({ q: aq, qText, solText, optText: '' });
+          }
+        } else {
+          const qText = stripHtml(aq.question);
+          const solText = stripHtml(aq.solution);
+          let optText = '';
+          try { const o = JSON.parse(aq.options || '{}'); optText = Object.values(o).map(v => stripHtml(v.choice)).join(' '); } catch (e) { }
+          const combined = (qText + ' ' + optText + ' ' + solText).toLowerCase();
+          if (combined.includes(q)) {
+            gsearchMatches.push({ q: aq, qText, solText, optText });
+          }
         }
       }
 
       const total = gsearchMatches.length;
+
+      const createBtn = $('btn-gsearch-create-exam');
+      if (isIdSearch && total > 0) {
+        createBtn.style.display = 'inline-block';
+        createBtn.onclick = () => {
+          const qs = gsearchMatches.map(m => m.q);
+          const name = prompt("Enter a name for this custom exam:", `Custom Exam (${qs.length} Qs)`);
+          if (name) {
+            closeGSearch();
+            createCustomExam(name, qs);
+          }
+        };
+      } else {
+        createBtn.style.display = 'none';
+      }
+
       let totalPages = Math.ceil(total / GSEARCH_PAGE_SIZE) || 1;
       let p = page;
       if (p < 0) p = 0;
@@ -2336,6 +2531,147 @@ let localProgress = JSON.parse(localStorage.getItem('archive_progress') || '{"ex
         rows.push(`${front}\t${back}`);
       });
       return rows.join('\n');
+    }
+
+    // ─── CUSTOM EXAMS PANEL LOGIC ───
+    $('btn-sidebar-custom-exams').addEventListener('click', () => {
+      if (window.innerWidth <= 900) {
+        $('sidebar').classList.remove('open');
+        $('sidebar-overlay').classList.remove('open');
+      }
+      $('overview').style.display = 'none';
+      $('anki-view').style.display = 'none';
+      $('exam-view').classList.remove('visible');
+      $('custom-exams-view').style.display = 'flex';
+
+      document.querySelectorAll('.subtopic-item').forEach(el => el.classList.remove('active'));
+      renderCustomExamsCreatorPanel();
+    });
+
+    // Make top logo return to overview
+    document.querySelectorAll('.top-logo').forEach(el => {
+      el.style.cursor = 'pointer';
+      el.addEventListener('click', () => {
+        $('overview').style.display = 'block';
+        $('anki-view').style.display = 'none';
+        $('custom-exams-view').style.display = 'none';
+        $('exam-view').classList.remove('visible');
+        document.querySelectorAll('.subtopic-item').forEach(x => x.classList.remove('active'));
+      });
+    });
+
+    $('btn-custom-create-submit').addEventListener('click', () => {
+      const nameInput = $('custom-exam-name');
+      const idsInput = $('custom-exam-ids');
+      
+      const name = nameInput.value.trim() || `Custom Exam (${new Date().toLocaleDateString()})`;
+      const cleanTerm = idsInput.value.trim().replace(/[\s,]+$/, '');
+      if (!cleanTerm) {
+        alert("Please enter at least one question ID.");
+        return;
+      }
+      const searchIds = cleanTerm.split(/[\s,]+/);
+      
+      // Find matching question objects
+      const matchedQs = allQuestions.filter(q => searchIds.includes(String(q.id)));
+      if (matchedQs.length === 0) {
+        alert("No questions found matching the entered IDs in the loaded archive database.");
+        return;
+      }
+
+      createCustomExam(name, matchedQs);
+      
+      // Clear inputs
+      nameInput.value = '';
+      idsInput.value = '';
+      
+      // Update the panel list
+      renderCustomExamsCreatorPanel();
+    });
+
+    function renderCustomExamsCreatorPanel() {
+      const container = $('custom-exams-list-container');
+      container.innerHTML = '';
+      
+      const customExams = localProgress.customExams || [];
+      if (customExams.length === 0) {
+        container.innerHTML = '<div style="color:var(--text3); font-size:13px; text-align:center; padding:20px; border:1px dashed var(--border); border-radius:var(--radius);">No custom exams created yet. Add question IDs above to create one.</div>';
+        return;
+      }
+
+      customExams.forEach(exam => {
+        const p = localProgress.exams[exam.id] || { visited: false, seenQs: [], answeredQs: {} };
+        const ids = exam.questionIds || [];
+        const resolvedQs = resolveCustomExam(exam);
+        const totalQs = ids.length;
+        const foundQs = resolvedQs.length;
+        const seen = p.seenQs ? p.seenQs.length : 0;
+        const correct = p.answeredQs ? Object.values(p.answeredQs).filter(a => a.correct).length : 0;
+        
+        const card = document.createElement('div');
+        card.style.cssText = `
+          background: var(--bg2);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          padding: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          flex-wrap: wrap;
+        `;
+
+        const mismatchWarning = (totalQs !== foundQs)
+          ? `<div style="font-size:11px; color:var(--amber); margin-top:2px;">⚠ ${totalQs - foundQs} ID(s) not found in loaded archive</div>`
+          : '';
+        
+        card.innerHTML = `
+          <div style="display:flex; flex-direction:column; gap:4px; flex:1; min-width:200px;">
+            <div style="font-weight:600; color:var(--text); font-size:14px;">${exam.name}</div>
+            <div style="font-size:11px; color:var(--text3); font-family:var(--mono);">IDs: ${ids.slice(0, 5).join(', ')}${ids.length > 5 ? '...' : ''}</div>
+            ${mismatchWarning}
+          </div>
+          
+          <div style="display:flex; gap:24px; align-items:center;">
+            <div class="st-progress" style="text-align:left;">
+              <span style="color:var(--text2); font-weight:500;">Questions: ${foundQs}</span>
+              <span>Seen: ${seen}/${totalQs}  ·  <span class="st-prog-correct">Correct: ${correct}</span></span>
+            </div>
+            
+            <div style="display:flex; gap:8px;">
+              <button class="btn btn-start-custom" style="padding: 6px 12px; font-size: 13px; background: var(--accent); color: white; border: none; border-radius: 4px; font-weight: 500; cursor: pointer;">Start Exam</button>
+              <button class="btn btn-del-panel-custom" style="padding: 6px 12px; font-size: 13px; background: var(--red); color: white; border: none; border-radius: 4px; font-weight: 500; cursor: pointer;">Delete</button>
+            </div>
+          </div>
+        `;
+        
+        card.querySelector('.btn-start-custom').addEventListener('click', () => {
+          const itemEl = document.querySelector(`.subtopic-item[data-st-id="${exam.id}"]`);
+          if (itemEl) {
+            itemEl.click();
+          } else {
+            const resolved = { ...exam, questions: resolveCustomExam(exam) };
+            openSubtopic({ name: "Custom Exams" }, resolved, card);
+          }
+        });
+        
+        card.querySelector('.btn-del-panel-custom').addEventListener('click', () => {
+          if (confirm(`Delete custom exam "${exam.name}"?`)) {
+            localProgress.customExams = localProgress.customExams.filter(x => x.id !== exam.id);
+            delete localProgress.exams[exam.id];
+            saveProgress();
+            renderCustomExamsCreatorPanel();
+            renderCatList('');
+            if (currentSubtopic && currentSubtopic.id === exam.id) {
+              $('exam-view').classList.remove('visible');
+              $('overview').style.display = 'block';
+              currentSubtopic = null;
+            }
+          }
+        });
+        
+        container.appendChild(card);
+      });
     }
 
     tryLoadArchiveFromQuery().then(() => {
