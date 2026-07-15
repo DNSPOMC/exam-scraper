@@ -2,9 +2,9 @@ const { writeFile } = require('fs/promises');
 const zlib = require('zlib');
 const crypto = require('crypto');
 
-const SECRET_PASSPHRASE = 'ArchiveSecretKey2026!#';
+const SECRET_PASSPHRASE = 'NaxlexSecretKey2026!#';
 
-const BASE_URL = 'https://nursing.archive.com';
+const BASE_URL = 'https://nursing.naxlex.com';
 
 // 👇 Define BOTH targets + output files
 const SCRAPE_TARGETS = [
